@@ -4,6 +4,7 @@ lightly edit it before exporting."""
 
 from __future__ import annotations
 
+import json
 import os
 
 import requests
@@ -16,6 +17,8 @@ st.set_page_config(page_title="Policy Brief Generator", page_icon=":page_facing_
 
 def _reset_brief() -> None:
     st.session_state.pop("brief", None)
+    st.session_state.pop("docx_bytes", None)
+    st.session_state.pop("docx_bytes_for", None)
 
 
 def _lines(value: str) -> list[str]:
@@ -42,6 +45,17 @@ def _call_generate(*, url, text, uploaded_file, topic_hint) -> dict:
             detail = response.text
         raise RuntimeError(detail)
     return response.json()
+
+
+def _call_export_docx(brief: dict) -> bytes:
+    response = requests.post(f"{API_BASE_URL}/export/docx", json=brief, timeout=60)
+    if response.status_code != 200:
+        try:
+            detail = response.json().get("detail", response.text)
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(detail)
+    return response.content
 
 
 def _brief_to_markdown(brief: dict) -> str:
@@ -112,11 +126,32 @@ if brief:
         st.text_area("Limitations (one per line)", "\n".join(brief["limitations"]), height=80)
     )
 
-    st.download_button(
-        "Download as Markdown",
-        data=_brief_to_markdown(brief),
-        file_name="policy_brief.md",
-        mime="text/markdown",
-    )
+    brief_signature = json.dumps(brief, sort_keys=True)
+    if st.session_state.get("docx_bytes_for") != brief_signature:
+        st.session_state.pop("docx_bytes", None)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            "Download as Markdown",
+            data=_brief_to_markdown(brief),
+            file_name="policy_brief.md",
+            mime="text/markdown",
+        )
+    with col2:
+        if st.button("Prepare Word export"):
+            try:
+                st.session_state["docx_bytes"] = _call_export_docx(brief)
+                st.session_state["docx_bytes_for"] = brief_signature
+            except (requests.RequestException, RuntimeError) as exc:
+                st.error(f"Could not export Word document: {exc}")
+
+        if "docx_bytes" in st.session_state:
+            st.download_button(
+                "Download as Word (.docx)",
+                data=st.session_state["docx_bytes"],
+                file_name="policy_brief.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
 else:
     st.info("Fill in a source in the sidebar and click **Generate brief** to start.")

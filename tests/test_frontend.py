@@ -32,6 +32,22 @@ class FakeResponse:
         return self._payload
 
 
+class FakeDocxResponse:
+    status_code = 200
+    content = b"PK\x03\x04fake-docx-bytes"
+
+    def json(self):
+        return {}
+
+
+def _generate_pasted_brief(at: AppTest) -> AppTest:
+    at.sidebar.radio[0].set_value("Paste text").run(timeout=RUN_TIMEOUT)
+    at.sidebar.text_area[0].set_value("x" * 250).run(timeout=RUN_TIMEOUT)
+    with patch("requests.post", return_value=FakeResponse(200, _make_brief_json())):
+        at.button[0].click().run(timeout=RUN_TIMEOUT)
+    return at
+
+
 def test_initial_state_shows_prompt_and_no_brief():
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=RUN_TIMEOUT)
@@ -87,3 +103,33 @@ def test_editing_key_findings_strips_blank_lines():
     findings_area.set_value("Finding one.\n\nFinding two.\n").run(timeout=RUN_TIMEOUT)
 
     assert at.session_state["brief"]["key_findings"] == ["Finding one.", "Finding two."]
+
+
+def test_prepare_word_export_shows_download_button():
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=RUN_TIMEOUT)
+    at = _generate_pasted_brief(at)
+
+    export_button = next(b for b in at.button if b.label == "Prepare Word export")
+    with patch("requests.post", return_value=FakeDocxResponse()):
+        export_button.click().run(timeout=RUN_TIMEOUT)
+
+    assert not at.exception
+    assert at.session_state["docx_bytes"] == FakeDocxResponse.content
+    assert "Download as Word (.docx)" in [d.label for d in at.download_button]
+
+
+def test_editing_brief_after_word_export_invalidates_docx():
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=RUN_TIMEOUT)
+    at = _generate_pasted_brief(at)
+
+    export_button = next(b for b in at.button if b.label == "Prepare Word export")
+    with patch("requests.post", return_value=FakeDocxResponse()):
+        export_button.click().run(timeout=RUN_TIMEOUT)
+
+    title_input = next(t for t in at.text_input if t.label == "Title")
+    title_input.set_value("Edited title").run(timeout=RUN_TIMEOUT)
+
+    assert "docx_bytes" not in at.session_state
+    assert "Download as Word (.docx)" not in [d.label for d in at.download_button]
