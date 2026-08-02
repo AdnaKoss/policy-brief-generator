@@ -15,20 +15,18 @@ from generation.providers.gemini_provider import GeminiProviderError
 from generation.schemas import GeneratedBrief, PolicyBrief
 from ingestion.models import IngestedSource
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
-
-
 class BriefGenerationError(RuntimeError):
     """Raised when the configured LLM provider fails to produce a usable brief."""
 
 
 def _get_provider() -> LLMProvider:
-    if LLM_PROVIDER == "anthropic":
+    provider_name = os.getenv("LLM_PROVIDER", "gemini").lower()
+    if provider_name == "anthropic":
         return AnthropicProvider()
-    if LLM_PROVIDER == "gemini":
+    if provider_name == "gemini":
         return GeminiProvider()
     raise BriefGenerationError(
-        f"Unknown LLM_PROVIDER '{LLM_PROVIDER}' — expected 'gemini' or 'anthropic'."
+        f"Unknown LLM_PROVIDER '{provider_name}' — expected 'gemini' or 'anthropic'."
     )
 
 
