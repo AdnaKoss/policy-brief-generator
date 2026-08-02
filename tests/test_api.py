@@ -87,3 +87,20 @@ def test_generate_wraps_brief_generation_error(monkeypatch):
     response = client.post("/generate", data={"text": "x" * 250})
 
     assert response.status_code == 502
+
+
+def test_export_docx_returns_downloadable_file():
+    response = client.post("/export/docx", json=_make_brief().model_dump())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert response.headers["content-disposition"] == 'attachment; filename="policy_brief.docx"'
+    assert response.content.startswith(b"PK")
+
+
+def test_export_docx_rejects_incomplete_brief():
+    response = client.post("/export/docx", json={"title": "Missing fields"})
+
+    assert response.status_code == 422

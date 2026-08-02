@@ -1,12 +1,14 @@
-"""FastAPI application exposing the ingestion -> generation pipeline as a
-single /generate endpoint: accepts a URL, pasted text, or an uploaded PDF,
-and returns a structured PolicyBrief."""
+"""FastAPI application exposing the ingestion -> generation -> export
+pipeline: accepts a URL, pasted text, or an uploaded PDF and returns a
+structured PolicyBrief (/generate), or renders an already-generated brief
+as a downloadable .docx (/export/docx)."""
 
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from generation.generator import BriefGenerationError, generate_brief
@@ -16,6 +18,9 @@ from ingestion.models import IngestedSource
 from ingestion.pdf import PdfExtractionError, extract_from_pdf
 from ingestion.text_input import from_text
 from ingestion.web import FetchError, extract_from_url
+from templates.word_export import build_docx
+
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 app = FastAPI(title="Policy Brief Generator", version="0.1.0")
 
@@ -41,6 +46,15 @@ async def generate(
         return generate_brief(source, topic_hint=topic_hint)
     except BriefGenerationError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/export/docx")
+def export_docx(brief: PolicyBrief) -> Response:
+    return Response(
+        content=build_docx(brief),
+        media_type=DOCX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="policy_brief.docx"'},
+    )
 
 
 async def _ingest(
